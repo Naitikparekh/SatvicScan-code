@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { ResultCard } from '../components/ResultCard';
 import { loadHistory, clearHistory } from '../services/storage';
@@ -134,23 +135,26 @@ export default function HistoryScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
+          {/* Header */}
+      <LinearGradient
+        colors={['#1B4332', '#2D6A4F']}
+        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.title}>History</Text>
           {items.length > 0 && (
             <View style={styles.countBadge}>
-              <Text style={styles.countText}>{items.length}</Text>
+              <Text style={styles.countText}>{items.length} scans</Text>
             </View>
           )}
         </View>
         {items.length > 0 && (
           <Pressable onPress={handleClearAll} style={styles.clearBtn} hitSlop={10}>
-            <Ionicons name="trash-outline" size={15} color={C.red} />
+            <Ionicons name="trash-outline" size={14} color="rgba(255,255,255,0.8)" />
             <Text style={styles.clearBtnText}>Clear</Text>
           </Pressable>
         )}
-      </View>
+      </LinearGradient>
 
       {loading ? null : items.length === 0 ? (
         <View style={styles.emptyState}>
@@ -185,19 +189,21 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 24,
     paddingTop: 20,
-    paddingBottom: 16,
+    paddingBottom: 20,
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 16,
+    borderRadius: 22,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  title: { fontSize: 28, fontWeight: '700', color: C.textPrimary },
+  title: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.3 },
   countBadge: {
-    backgroundColor: C.surface,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 100,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  countText: { fontSize: 13, fontWeight: '600', color: C.textSecondary },
+  countText: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
   clearBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -205,11 +211,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 10,
-    backgroundColor: '#FFF0F0',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderWidth: 1,
-    borderColor: '#FFD0D0',
+    borderColor: 'rgba(255,255,255,0.2)',
   },
-  clearBtnText: { fontSize: 13, fontWeight: '500', color: C.red },
+  clearBtnText: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.9)' },
 
   listContent: { paddingHorizontal: 24, paddingBottom: 48, paddingTop: 4 },
 

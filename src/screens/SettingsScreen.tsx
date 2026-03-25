@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { getApiKey, saveApiKey, deleteApiKey } from '../services/storage';
 
@@ -174,14 +175,20 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}>
 
         {/* Header */}
-        <View style={styles.header}>
+        <LinearGradient
+          colors={['#1B4332', '#2D6A4F']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          style={styles.header}>
+          <View style={styles.headerIconWrap}>
+            <Ionicons name="settings" size={20} color="#2D6A4F" />
+          </View>
           <Text style={styles.title}>Settings</Text>
-        </View>
+        </LinearGradient>
 
         {/* API key status banner */}
         {!loading && (
           <Pressable
-            style={[styles.apiBanner, apiKey ? styles.apiBannerSet : styles.apiBannerUnset]}
+            style={[styles.apiBanner, apiKey ? styles.apiBannerSet : styles.apiBannerUnset, { marginHorizontal: 24 }]}
             onPress={() => setSheetVisible(true)}>
             <View style={[styles.apiBannerIcon, { backgroundColor: apiKey ? C.accentGreenLight : '#FFF4E0' }]}>
               <Ionicons name="key-outline" size={20} color={apiKey ? C.accentGreen : '#E07A00'} />
@@ -288,10 +295,25 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: C.bg },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 48 },
+  scrollContent: { paddingHorizontal: 0, paddingBottom: 48 },
 
-  header: { paddingTop: 20, paddingBottom: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: C.textPrimary },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginHorizontal: 24,
+    marginTop: 16,
+    marginBottom: 20,
+    borderRadius: 22,
+    paddingHorizontal: 22,
+    paddingVertical: 22,
+  },
+  headerIconWrap: {
+    width: 42, height: 42, borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  title: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.3 },
 
   // API status banner
   apiBanner: {
@@ -323,6 +345,7 @@ const styles = StyleSheet.create({
 
   // Card
   card: {
+    marginHorizontal: 24,
     backgroundColor: C.surface,
     borderRadius: 16,
     borderWidth: 1,
@@ -370,7 +393,7 @@ const styles = StyleSheet.create({
     color: C.textMuted,
     lineHeight: 18,
     textAlign: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 32,
     marginTop: 4,
   },
 

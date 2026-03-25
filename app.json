@@ -38,7 +38,8 @@
           "cameraPermission": "SatvikScan needs camera access to scan ingredient labels and barcodes."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font"
     ],
     "scheme": "satvikscan"
   }

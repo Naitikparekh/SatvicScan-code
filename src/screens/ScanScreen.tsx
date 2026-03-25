@@ -14,12 +14,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { ResultCard } from '../components/ResultCard';
 import { analyzeIngredientsImage, analyzeIngredientsText } from '../services/claudeApi';
 import { getApiKey, addHistoryItem } from '../services/storage';
 import { fetchProductByBarcode } from '../services/openFoodFacts';
-import type { ClaudeDietResult, ScanMode } from '../types';
+import type { ClaudeDietResult } from '../types';
 
 const C = {
   bg: '#FFFFFF',
@@ -29,32 +30,24 @@ const C = {
   textSecondary: '#6B6B6B',
   textMuted: '#ABABAB',
   accentGreen: '#2D6A4F',
+  accentGreenMid: '#3A8A65',
   accentGreenLight: '#EAF4EE',
 } as const;
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const H_PADDING = 24;
+const H_PADDING = 20;
 
 type TabMode = 'Photo' | 'Barcode' | 'Manual';
 
-const TAB_CONFIG: { mode: TabMode; icon: keyof typeof Ionicons.glyphMap; label: string }[] = [
-  { mode: 'Photo', icon: 'camera-outline', label: 'Photo' },
-  { mode: 'Barcode', icon: 'barcode-outline', label: 'Barcode' },
-  { mode: 'Manual', icon: 'create-outline', label: 'Manual' },
-];
+interface Props { onNavigateToSettings?: () => void; }
 
-interface ScanScreenProps {
-  onNavigateToSettings?: () => void;
-}
-
-export default function ScanScreen({ onNavigateToSettings }: ScanScreenProps) {
+export default function ScanScreen({ onNavigateToSettings }: Props) {
   const [activeTab, setActiveTab] = useState<TabMode>('Photo');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ClaudeDietResult | null>(null);
 
   const cameraRef = useRef<any>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-
   const [barcodeLocked, setBarcodeLocked] = useState(false);
   const [productName, setProductName] = useState('');
   const [ingredients, setIngredients] = useState('');
@@ -62,14 +55,10 @@ export default function ScanScreen({ onNavigateToSettings }: ScanScreenProps) {
   const checkApiKey = useCallback(async (): Promise<string | null> => {
     const key = await getApiKey();
     if (!key) {
-      Alert.alert(
-        'API Key Required',
-        'Add your Claude API key in Settings to start scanning.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Go to Settings', onPress: () => onNavigateToSettings?.() },
-        ]
-      );
+      Alert.alert('API Key Required', 'Add your Claude API key in Settings.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Settings', onPress: () => onNavigateToSettings?.() },
+      ]);
       return null;
     }
     return key;
@@ -77,83 +66,62 @@ export default function ScanScreen({ onNavigateToSettings }: ScanScreenProps) {
 
   const handleCapture = useCallback(async () => {
     const key = await checkApiKey();
-    if (!key) return;
-    if (!cameraRef.current) {
-      Alert.alert('Camera error', 'Camera not ready. Please try again.');
-      return;
-    }
+    if (!key || !cameraRef.current) return;
     try {
-      setBusy(true);
-      setResult(null);
+      setBusy(true); setResult(null);
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
       if (!photo?.uri) throw new Error('No photo captured.');
-      const manipulated = await manipulateAsync(
-        photo.uri,
-        [{ resize: { width: 1024 } }],
-        { compress: 0.75, format: SaveFormat.JPEG, base64: true }
-      );
-      if (!manipulated.base64) throw new Error('Failed to encode image.');
-      const scanResult = await analyzeIngredientsImage({ imageBase64: manipulated.base64 });
-      await addHistoryItem({ mode: 'photo', inputPreview: 'Photo scan', result: scanResult });
-      setResult(scanResult);
+      const m = await manipulateAsync(photo.uri, [{ resize: { width: 1024 } }], {
+        compress: 0.75, format: SaveFormat.JPEG, base64: true,
+      });
+      if (!m.base64) throw new Error('Failed to encode image.');
+      const r = await analyzeIngredientsImage({ imageBase64: m.base64 });
+      await addHistoryItem({ mode: 'photo', inputPreview: 'Photo scan', result: r });
+      setResult(r);
     } catch (err: any) {
       if (err?.message === 'NO_API_KEY') onNavigateToSettings?.();
       else Alert.alert('Scan failed', err?.message ?? 'Please try again.');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }, [checkApiKey, onNavigateToSettings]);
 
-  const handleBarcodeScan = useCallback(
-    async ({ data }: { data: string }) => {
-      if (barcodeLocked || busy) return;
-      setBarcodeLocked(true);
-      const key = await checkApiKey();
-      if (!key) { setTimeout(() => setBarcodeLocked(false), 1500); return; }
-      try {
-        setBusy(true);
-        setResult(null);
-        const barcode = String(data).trim();
-        const product = await fetchProductByBarcode(barcode);
-        let ingredientsText = product.ingredientsText ?? '';
-        const productNameHint = product.productName ?? (product.brands ? `${product.brands}` : `Barcode ${barcode}`);
-        if (!ingredientsText) {
-          ingredientsText = `Product: ${productNameHint}. No ingredient list available. Barcode: ${barcode}.`;
-        }
-        const scanResult = await analyzeIngredientsText({ ingredientsText, productNameHint });
-        await addHistoryItem({ mode: 'barcode', inputPreview: barcode, result: scanResult });
-        setResult(scanResult);
-      } catch (err: any) {
-        if (err?.message === 'NO_API_KEY') onNavigateToSettings?.();
-        else Alert.alert('Barcode scan failed', err?.message ?? 'Please try again.');
-      } finally {
-        setBusy(false);
-        setTimeout(() => setBarcodeLocked(false), 2000);
-      }
-    },
-    [barcodeLocked, busy, checkApiKey, onNavigateToSettings]
-  );
+  const handleBarcodeScan = useCallback(async ({ data }: { data: string }) => {
+    if (barcodeLocked || busy) return;
+    setBarcodeLocked(true);
+    const key = await checkApiKey();
+    if (!key) { setTimeout(() => setBarcodeLocked(false), 1500); return; }
+    try {
+      setBusy(true); setResult(null);
+      const barcode = String(data).trim();
+      const product = await fetchProductByBarcode(barcode);
+      let ingredientsText = product.ingredientsText ?? '';
+      const hint = product.productName ?? (product.brands ?? `Barcode ${barcode}`);
+      if (!ingredientsText) ingredientsText = `Product: ${hint}. No ingredient list. Barcode: ${barcode}.`;
+      const r = await analyzeIngredientsText({ ingredientsText, productNameHint: hint });
+      await addHistoryItem({ mode: 'barcode', inputPreview: barcode, result: r });
+      setResult(r);
+    } catch (err: any) {
+      if (err?.message === 'NO_API_KEY') onNavigateToSettings?.();
+      else Alert.alert('Barcode failed', err?.message ?? 'Please try again.');
+    } finally { setBusy(false); setTimeout(() => setBarcodeLocked(false), 2000); }
+  }, [barcodeLocked, busy, checkApiKey, onNavigateToSettings]);
 
   const handleManualCheck = useCallback(async () => {
     const trimmed = ingredients.trim();
-    if (!trimmed) { Alert.alert('Empty ingredients', 'Please enter the ingredients list.'); return; }
+    if (!trimmed) { Alert.alert('Empty ingredients', 'Please enter ingredients.'); return; }
     const key = await checkApiKey();
     if (!key) return;
     try {
-      setBusy(true);
-      setResult(null);
-      const scanResult = await analyzeIngredientsText({
+      setBusy(true); setResult(null);
+      const r = await analyzeIngredientsText({
         ingredientsText: trimmed,
         productNameHint: productName.trim() || undefined,
       });
-      await addHistoryItem({ mode: 'manual', inputPreview: trimmed.slice(0, 60), result: scanResult });
-      setResult(scanResult);
+      await addHistoryItem({ mode: 'manual', inputPreview: trimmed.slice(0, 60), result: r });
+      setResult(r);
     } catch (err: any) {
       if (err?.message === 'NO_API_KEY') onNavigateToSettings?.();
       else Alert.alert('Check failed', err?.message ?? 'Please try again.');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }, [ingredients, productName, checkApiKey, onNavigateToSettings]);
 
   return (
@@ -164,119 +132,116 @@ export default function ScanScreen({ onNavigateToSettings }: ScanScreenProps) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.logoMark}>
-            <Ionicons name="leaf" size={18} color={C.accentGreen} />
+        {/* ── Hero header ── */}
+        <LinearGradient
+          colors={['#1B4332', '#2D6A4F', '#40916C']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroCard}>
+          <View style={styles.heroIconRow}>
+            <View style={styles.heroIconBubble}>
+              <Ionicons name="leaf" size={22} color="#2D6A4F" />
+            </View>
+            <View style={styles.heroBadge}>
+              <Text style={styles.heroBadgeText}>Swaminarayan Satvik</Text>
+            </View>
           </View>
-          <View style={styles.headerText}>
-            <Text style={styles.title}>SatvikScan</Text>
-            <Text style={styles.subtitle}>Swaminarayan diet compliance</Text>
-          </View>
+          <Text style={styles.heroTitle}>SatvikScan</Text>
+          <Text style={styles.heroSubtitle}>
+            Instantly check if a food is permitted on your Satvik diet
+          </Text>
+        </LinearGradient>
+
+        {/* ── Mode pill tabs ── */}
+        <View style={styles.pillRow}>
+          {(['Photo', 'Barcode', 'Manual'] as TabMode[]).map((mode) => {
+            const icons: Record<TabMode, keyof typeof Ionicons.glyphMap> = {
+              Photo: 'camera-outline',
+              Barcode: 'barcode-outline',
+              Manual: 'create-outline',
+            };
+            const active = activeTab === mode;
+            return (
+              <Pressable
+                key={mode}
+                onPress={() => { setActiveTab(mode); setResult(null); }}
+                style={[styles.pill, active && styles.pillActive]}>
+                <Ionicons
+                  name={icons[mode]}
+                  size={15}
+                  color={active ? C.accentGreen : C.textMuted}
+                />
+                <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                  {mode}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        {/* Pill tabs */}
-        <View style={styles.pillContainer}>
-          {TAB_CONFIG.map(({ mode, icon, label }) => (
-            <Pressable
-              key={mode}
-              onPress={() => { setActiveTab(mode); setResult(null); }}
-              style={[styles.pill, activeTab === mode && styles.pillActive]}>
-              <Ionicons
-                name={icon}
-                size={16}
-                color={activeTab === mode ? C.accentGreen : C.textMuted}
-              />
-              <Text style={[styles.pillText, activeTab === mode && styles.pillTextActive]}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Photo mode */}
+        {/* ── Photo mode ── */}
         {activeTab === 'Photo' && (
-          <View style={styles.section}>
-            {!cameraPermission?.granted ? (
-              <PermissionCard
-                icon="camera"
-                title="Camera Access Needed"
-                subtitle="Allow camera access to photograph ingredient labels."
-                onAllow={requestCameraPermission}
-              />
-            ) : (
-              <>
-                <View style={styles.cameraFrame}>
-                  <CameraView ref={cameraRef} style={styles.camera} facing="back" />
-                  <View pointerEvents="none" style={styles.cameraOverlay}>
-                    <View style={styles.cameraRect} />
-                  </View>
-                  <View pointerEvents="none" style={styles.cameraCornersOverlay}>
-                    <Corner position="topLeft" />
-                    <Corner position="topRight" />
-                    <Corner position="bottomLeft" />
-                    <Corner position="bottomRight" />
-                  </View>
+          !cameraPermission?.granted ? (
+            <PermissionCard icon="camera" title="Camera Access" subtitle="Needed to photograph ingredient labels." onAllow={requestCameraPermission} />
+          ) : (
+            <View style={styles.cameraSection}>
+              <View style={styles.cameraFrame}>
+                <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+                {/* dim overlay */}
+                <View style={styles.camDim} />
+                {/* scan rect */}
+                <View style={styles.scanRect}>
+                  <CornerLines />
                 </View>
-                <Text style={styles.cameraHint}>Point at ingredient label and capture</Text>
-                <View style={styles.captureRow}>
-                  <Pressable
-                    style={[styles.captureOuter, busy && { opacity: 0.5 }]}
-                    onPress={handleCapture}
-                    disabled={busy}>
-                    {busy
-                      ? <ActivityIndicator color="#fff" size="small" />
-                      : <Ionicons name="camera" size={26} color="#fff" />}
-                  </Pressable>
-                </View>
-              </>
-            )}
-          </View>
+                <Text style={styles.camLabel}>Point at ingredient label</Text>
+              </View>
+              <Pressable
+                style={[styles.captureBtn, busy && { opacity: 0.5 }]}
+                onPress={handleCapture}
+                disabled={busy}>
+                <LinearGradient colors={['#2D6A4F', '#1B4332']} style={styles.captureBtnGrad}>
+                  {busy
+                    ? <ActivityIndicator color="#fff" />
+                    : <Ionicons name="camera" size={28} color="#fff" />}
+                </LinearGradient>
+              </Pressable>
+            </View>
+          )
         )}
 
-        {/* Barcode mode */}
+        {/* ── Barcode mode ── */}
         {activeTab === 'Barcode' && (
-          <View style={styles.section}>
-            {!cameraPermission?.granted ? (
-              <PermissionCard
-                icon="barcode"
-                title="Camera Access Needed"
-                subtitle="Allow camera access to scan barcodes."
-                onAllow={requestCameraPermission}
-              />
-            ) : (
-              <>
-                <View style={[styles.cameraFrame, { height: 220 }]}>
-                  <CameraView
-                    style={styles.camera}
-                    facing="back"
-                    barcodeScannerSettings={{
-                      barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'],
-                    }}
-                    onBarcodeScanned={!barcodeLocked && !busy ? handleBarcodeScan : undefined}
-                  />
-                  <View pointerEvents="none" style={styles.cameraOverlay}>
-                    <View style={styles.barcodeFrame} />
-                  </View>
+          !cameraPermission?.granted ? (
+            <PermissionCard icon="barcode" title="Camera Access" subtitle="Needed to scan barcodes." onAllow={requestCameraPermission} />
+          ) : (
+            <View style={styles.cameraSection}>
+              <View style={[styles.cameraFrame, { height: 200 }]}>
+                <CameraView
+                  style={StyleSheet.absoluteFill}
+                  facing="back"
+                  barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'qr'] }}
+                  onBarcodeScanned={!barcodeLocked && !busy ? handleBarcodeScan : undefined}
+                />
+                <View style={styles.camDim} />
+                <View style={styles.barcodeRect} />
+              </View>
+              <View style={styles.hintRow}>
+                <Ionicons name="information-circle-outline" size={14} color={C.textMuted} />
+                <Text style={styles.hintText}>Align barcode inside the frame</Text>
+              </View>
+              {busy && (
+                <View style={styles.busyRow}>
+                  <ActivityIndicator size="small" color={C.accentGreen} />
+                  <Text style={styles.busyText}>Looking up product…</Text>
                 </View>
-                <View style={styles.barcodeHintRow}>
-                  <Ionicons name="information-circle-outline" size={15} color={C.textMuted} />
-                  <Text style={styles.barcodeHint}>Align barcode inside the frame</Text>
-                </View>
-                {busy && (
-                  <View style={styles.busyRow}>
-                    <ActivityIndicator size="small" color={C.accentGreen} />
-                    <Text style={styles.busyText}>Looking up product…</Text>
-                  </View>
-                )}
-              </>
-            )}
-          </View>
+              )}
+            </View>
+          )
         )}
 
-        {/* Manual mode */}
+        {/* ── Manual mode ── */}
         {activeTab === 'Manual' && (
-          <View style={styles.section}>
+          <View style={styles.manualSection}>
             <Text style={styles.inputLabel}>Product Name <Text style={styles.optional}>(optional)</Text></Text>
             <TextInput
               style={styles.textInput}
@@ -285,41 +250,36 @@ export default function ScanScreen({ onNavigateToSettings }: ScanScreenProps) {
               placeholder="e.g. Lay's Classic Chips"
               placeholderTextColor={C.textMuted}
               autoCapitalize="words"
-              returnKeyType="next"
             />
-
-            <Text style={[styles.inputLabel, { marginTop: 20 }]}>Ingredients List</Text>
+            <Text style={[styles.inputLabel, { marginTop: 18 }]}>Ingredients List</Text>
             <TextInput
-              style={[styles.textInput, styles.textInputMultiline]}
+              style={[styles.textInput, { height: 130, paddingTop: 13 }]}
               value={ingredients}
               onChangeText={setIngredients}
-              placeholder="Paste the full ingredients list here…"
+              placeholder="Paste full ingredients here…"
               placeholderTextColor={C.textMuted}
               multiline
               textAlignVertical="top"
               autoCapitalize="none"
               autoCorrect={false}
             />
-
             <Pressable
-              style={[
-                styles.btnPrimary,
-                { marginTop: 20 },
-                (busy || !ingredients.trim()) && { opacity: 0.45 },
-              ]}
+              style={[styles.checkBtn, (busy || !ingredients.trim()) && { opacity: 0.45 }]}
               onPress={handleManualCheck}
               disabled={busy || !ingredients.trim()}>
-              {busy
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <>
-                    <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />
-                    <Text style={styles.btnPrimaryText}>Check Compliance</Text>
-                  </>}
+              <LinearGradient colors={['#2D6A4F', '#1B4332']} style={styles.checkBtnGrad}>
+                {busy
+                  ? <ActivityIndicator color="#fff" />
+                  : <>
+                      <Ionicons name="shield-checkmark" size={18} color="#fff" />
+                      <Text style={styles.checkBtnText}>Check Compliance</Text>
+                    </>}
+              </LinearGradient>
             </Pressable>
           </View>
         )}
 
-        {/* Analysing overlay (photo mode) */}
+        {/* Analysing indicator */}
         {busy && activeTab === 'Photo' && (
           <View style={styles.busyRow}>
             <ActivityIndicator size="small" color={C.accentGreen} />
@@ -327,13 +287,13 @@ export default function ScanScreen({ onNavigateToSettings }: ScanScreenProps) {
           </View>
         )}
 
-        {/* Result card */}
+        {/* Result */}
         {result && !busy && (
-          <View style={styles.resultSection}>
+          <View style={{ marginTop: 28 }}>
             <ResultCard result={result} />
-            <Pressable style={styles.btnSecondary} onPress={() => setResult(null)}>
+            <Pressable style={styles.rescanBtn} onPress={() => setResult(null)}>
               <Ionicons name="refresh-outline" size={16} color={C.textSecondary} />
-              <Text style={styles.btnSecondaryText}>Scan another</Text>
+              <Text style={styles.rescanText}>Scan another</Text>
             </Pressable>
           </View>
         )}
@@ -342,278 +302,238 @@ export default function ScanScreen({ onNavigateToSettings }: ScanScreenProps) {
   );
 }
 
-// ── Corner overlay helper ────────────────────────────────────────────────────
-function Corner({ position }: { position: 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight' }) {
-  const isTop = position.startsWith('top');
-  const isLeft = position.endsWith('Left');
+// ── Corner lines for scan frame ──────────────────────────────────────────────
+function CornerLines() {
+  const L = 22;
+  const T = 3;
+  const color = 'rgba(255,255,255,0.95)';
+  const corners = [
+    { top: 0, left: 0, borderTopWidth: T, borderLeftWidth: T, borderTopLeftRadius: 6 },
+    { top: 0, right: 0, borderTopWidth: T, borderRightWidth: T, borderTopRightRadius: 6 },
+    { bottom: 0, left: 0, borderBottomWidth: T, borderLeftWidth: T, borderBottomLeftRadius: 6 },
+    { bottom: 0, right: 0, borderBottomWidth: T, borderRightWidth: T, borderBottomRightRadius: 6 },
+  ];
   return (
-    <View
-      style={[
-        styles.corner,
-        isTop ? { top: 12 } : { bottom: 12 },
-        isLeft ? { left: 12 } : { right: 12 },
-        {
-          borderTopWidth: isTop ? 3 : 0,
-          borderBottomWidth: isTop ? 0 : 3,
-          borderLeftWidth: isLeft ? 3 : 0,
-          borderRightWidth: isLeft ? 0 : 3,
-          borderTopLeftRadius: isTop && isLeft ? 6 : 0,
-          borderTopRightRadius: isTop && !isLeft ? 6 : 0,
-          borderBottomLeftRadius: !isTop && isLeft ? 6 : 0,
-          borderBottomRightRadius: !isTop && !isLeft ? 6 : 0,
-        },
-      ]}
-    />
+    <>
+      {corners.map((s, i) => (
+        <View key={i} style={[{ position: 'absolute', width: L, height: L, borderColor: color }, s]} />
+      ))}
+    </>
   );
 }
 
-// ── Permission card helper ───────────────────────────────────────────────────
-function PermissionCard({
-  icon,
-  title,
-  subtitle,
-  onAllow,
-}: {
+// ── Permission card ──────────────────────────────────────────────────────────
+function PermissionCard({ icon, title, subtitle, onAllow }: {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
   onAllow: () => void;
 }) {
   return (
-    <View style={styles.permissionBox}>
-      <View style={styles.permissionIconWrap}>
-        <Ionicons name={icon} size={28} color={C.accentGreen} />
+    <View style={styles.permCard}>
+      <View style={styles.permIconWrap}>
+        <Ionicons name={icon} size={30} color="#2D6A4F" />
       </View>
-      <Text style={styles.permissionTitle}>{title}</Text>
-      <Text style={styles.permissionSubtitle}>{subtitle}</Text>
-      <Pressable style={styles.btnPrimary} onPress={onAllow}>
-        <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-        <Text style={styles.btnPrimaryText}>Allow Camera</Text>
+      <Text style={styles.permTitle}>{title}</Text>
+      <Text style={styles.permSubtitle}>{subtitle}</Text>
+      <Pressable style={styles.permBtn} onPress={onAllow}>
+        <LinearGradient colors={['#2D6A4F', '#1B4332']} style={styles.permBtnGrad}>
+          <Text style={styles.permBtnText}>Allow Camera Access</Text>
+        </LinearGradient>
       </Pressable>
     </View>
   );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
-const CAMERA_HEIGHT = 280;
-const BARCODE_FRAME_W = SCREEN_WIDTH * 0.82 - H_PADDING * 2;
-
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: C.bg },
+  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: H_PADDING, paddingBottom: 48 },
+  scrollContent: { paddingBottom: 48 },
 
-  // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 20,
+  // Hero
+  heroCard: {
+    marginHorizontal: H_PADDING,
+    marginTop: 16,
     marginBottom: 20,
+    borderRadius: 24,
+    padding: 24,
+    gap: 10,
   },
-  logoMark: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: C.accentGreenLight,
-    alignItems: 'center',
-    justifyContent: 'center',
+  heroIconRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  heroIconBubble: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  headerText: { gap: 2 },
-  title: { fontSize: 22, fontWeight: '700', color: C.textPrimary, letterSpacing: -0.3 },
-  subtitle: { fontSize: 13, fontWeight: '400', color: C.textMuted },
+  heroBadge: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 100,
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+  },
+  heroBadgeText: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
+  heroTitle: { fontSize: 34, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
+  heroSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.75)', lineHeight: 20 },
 
-  // Pill tabs
-  pillContainer: {
+  // Pills
+  pillRow: {
     flexDirection: 'row',
-    backgroundColor: C.surface,
+    marginHorizontal: H_PADDING,
+    backgroundColor: '#F7F7F5',
     borderRadius: 14,
     padding: 4,
-    marginBottom: 24,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: C.border,
-    gap: 2,
+    borderColor: '#EEEEEA',
+    gap: 3,
   },
   pill: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 5,
-    paddingVertical: 9,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 5, paddingVertical: 10, borderRadius: 10,
   },
   pillActive: {
-    backgroundColor: C.bg,
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
   },
-  pillText: { fontSize: 13, fontWeight: '500', color: C.textMuted },
-  pillTextActive: { fontSize: 13, fontWeight: '600', color: C.textPrimary },
-
-  // Section
-  section: { gap: 12 },
+  pillText: { fontSize: 13, fontWeight: '500', color: '#ABABAB' },
+  pillTextActive: { fontSize: 13, fontWeight: '700', color: '#1A1A1A' },
 
   // Camera
+  cameraSection: { marginHorizontal: H_PADDING, gap: 14 },
   cameraFrame: {
     width: '100%',
-    height: CAMERA_HEIGHT,
-    borderRadius: 20,
+    height: 280,
+    borderRadius: 22,
     overflow: 'hidden',
     backgroundColor: '#111',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 6,
-  },
-  camera: { flex: 1 },
-  cameraOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.15)',
   },
-  cameraCornersOverlay: {
+  camDim: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
-  corner: {
-    position: 'absolute',
-    width: 22,
-    height: 22,
-    borderColor: 'rgba(255,255,255,0.95)',
-  },
-  cameraRect: {
-    width: '88%',
-    height: 220,
+  scanRect: {
+    width: SCREEN_WIDTH * 0.72,
+    height: 200,
     borderRadius: 4,
-    backgroundColor: 'transparent',
   },
-  barcodeFrame: {
-    width: BARCODE_FRAME_W > 0 ? BARCODE_FRAME_W : 260,
-    height: 110,
+  camLabel: {
+    position: 'absolute',
+    bottom: 16,
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  barcodeRect: {
+    width: SCREEN_WIDTH * 0.7,
+    height: 90,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.9)',
+    borderColor: 'rgba(255,255,255,0.85)',
     borderRadius: 8,
-    backgroundColor: 'transparent',
   },
-  cameraHint: {
-    textAlign: 'center',
-    fontSize: 13,
-    color: C.textMuted,
-    marginTop: -4,
+  captureBtn: {
+    alignSelf: 'center',
+    width: 70, height: 70, borderRadius: 35,
+    shadowColor: '#2D6A4F',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
-
-  // Capture button
-  captureRow: { alignItems: 'center', marginTop: 8 },
-  captureOuter: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: C.accentGreen,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: C.accentGreen,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
+  captureBtnGrad: {
+    flex: 1, borderRadius: 35,
+    alignItems: 'center', justifyContent: 'center',
   },
 
-  // Barcode hint
-  barcodeHintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    marginTop: -4,
-  },
-  barcodeHint: { fontSize: 13, color: C.textMuted },
+  hintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  hintText: { fontSize: 13, color: '#ABABAB' },
+  busyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16 },
+  busyText: { fontSize: 14, color: '#6B6B6B' },
 
-  // Manual inputs
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.textPrimary,
-    marginBottom: 8,
-  },
-  optional: { fontWeight: '400', color: C.textMuted },
+  // Manual
+  manualSection: { marginHorizontal: H_PADDING, gap: 0 },
+  inputLabel: { fontSize: 13, fontWeight: '700', color: '#1A1A1A', marginBottom: 8, letterSpacing: 0.1 },
+  optional: { fontWeight: '400', color: '#ABABAB' },
   textInput: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
+    backgroundColor: '#F7F7F5',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    borderColor: '#EEEEEA',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 15,
-    color: C.textPrimary,
+    color: '#1A1A1A',
   },
-  textInputMultiline: { height: 120, paddingTop: 13 },
-
-  // Buttons
-  btnPrimary: {
-    backgroundColor: C.accentGreen,
-    borderRadius: 12,
-    paddingVertical: 15,
+  checkBtn: {
+    marginTop: 20,
+    borderRadius: 14,
+    overflow: 'hidden',
+    shadowColor: '#2D6A4F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  checkBtnGrad: {
+    paddingVertical: 17,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
-  btnPrimaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-  btnSecondary: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingVertical: 13,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 10,
-  },
-  btnSecondaryText: { color: C.textSecondary, fontSize: 15, fontWeight: '500' },
+  checkBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
   // Permission card
-  permissionBox: {
-    backgroundColor: C.surface,
-    borderRadius: 20,
+  permCard: {
+    marginHorizontal: H_PADDING,
+    backgroundColor: '#F7F7F5',
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: C.border,
+    borderColor: '#EEEEEA',
     padding: 28,
     alignItems: 'center',
     gap: 12,
   },
-  permissionIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: C.accentGreenLight,
-    alignItems: 'center',
-    justifyContent: 'center',
+  permIconWrap: {
+    width: 64, height: 64, borderRadius: 20,
+    backgroundColor: '#EAF4EE',
+    alignItems: 'center', justifyContent: 'center',
     marginBottom: 4,
   },
-  permissionTitle: { fontSize: 17, fontWeight: '600', color: C.textPrimary, textAlign: 'center' },
-  permissionSubtitle: {
-    fontSize: 14,
-    color: C.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 4,
+  permTitle: { fontSize: 18, fontWeight: '700', color: '#1A1A1A' },
+  permSubtitle: { fontSize: 14, color: '#6B6B6B', textAlign: 'center', lineHeight: 20 },
+  permBtn: {
+    width: '100%',
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginTop: 6,
+    shadowColor: '#2D6A4F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
+  permBtnGrad: { paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
+  permBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
-  // Busy / result
-  busyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 20,
+  // Rescan
+  rescanBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, marginTop: 12,
+    backgroundColor: '#F7F7F5',
+    borderRadius: 12, borderWidth: 1, borderColor: '#EEEEEA',
+    paddingVertical: 13,
+    marginHorizontal: H_PADDING,
   },
-  busyText: { fontSize: 14, color: C.textSecondary },
-  resultSection: { marginTop: 28 },
+  rescanText: { color: '#6B6B6B', fontSize: 15, fontWeight: '500' },
 });
