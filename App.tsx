@@ -2,13 +2,13 @@ import React, { useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
-import { Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
 
 import ScanScreen from './src/screens/ScanScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
   bg: '#FFFFFF',
   border: '#EEEEEA',
@@ -16,20 +16,9 @@ const C = {
   textMuted: '#ABABAB',
 } as const;
 
-// ─── Tab icon using text glyphs (no native icon deps required) ────────────────
-function TabIcon({ glyph, color, size }: { glyph: string; color: string; size: number }) {
-  return (
-    <Text style={{ fontSize: size - 4, color, lineHeight: size + 2, textAlign: 'center' }}>
-      {glyph}
-    </Text>
-  );
-}
-
-// ─── Navigator ────────────────────────────────────────────────────────────────
 const Tab = createBottomTabNavigator();
 
 export default function App() {
-  // Expose tab navigator ref so ScanScreen can navigate to Settings
   const navigationRef = useRef<any>(null);
 
   return (
@@ -45,6 +34,9 @@ export default function App() {
             backgroundColor: C.bg,
             borderTopColor: C.border,
             borderTopWidth: 1,
+            height: Platform.OS === 'ios' ? 84 : 64,
+            paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+            paddingTop: 8,
           },
           tabBarLabelStyle: {
             fontSize: 11,
@@ -55,9 +47,8 @@ export default function App() {
           name="Scan"
           options={{
             tabBarIcon: ({ color, size }) => (
-              <TabIcon glyph="⬤" color={color} size={size} />
+              <Ionicons name="scan-outline" size={size} color={color} />
             ),
-            tabBarLabel: 'Scan',
           }}>
           {() => (
             <ScanScreen
@@ -73,9 +64,8 @@ export default function App() {
           component={HistoryScreen}
           options={{
             tabBarIcon: ({ color, size }) => (
-              <TabIcon glyph="☰" color={color} size={size} />
+              <Ionicons name="time-outline" size={size} color={color} />
             ),
-            tabBarLabel: 'History',
           }}
         />
 
@@ -84,9 +74,8 @@ export default function App() {
           component={SettingsScreen}
           options={{
             tabBarIcon: ({ color, size }) => (
-              <TabIcon glyph="⚙" color={color} size={size} />
+              <Ionicons name="settings-outline" size={size} color={color} />
             ),
-            tabBarLabel: 'Settings',
           }}
         />
       </Tab.Navigator>

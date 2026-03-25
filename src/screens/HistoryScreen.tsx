@@ -7,12 +7,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { ResultCard } from '../components/ResultCard';
 import { loadHistory, clearHistory } from '../services/storage';
 import type { ClaudeDietResult, ScanHistoryItem } from '../types';
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
   bg: '#FFFFFF',
   surface: '#F7F7F5',
@@ -21,6 +21,7 @@ const C = {
   textSecondary: '#6B6B6B',
   textMuted: '#ABABAB',
   accentGreen: '#2D6A4F',
+  accentGreenLight: '#EAF4EE',
   safeBg: '#D8F3DC',
   safeText: '#2D6A4F',
   red: '#C1121F',
@@ -29,13 +30,11 @@ const C = {
   amberBg: '#FFF4E0',
 } as const;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function timeAgo(timestamp: number): string {
   const diff = Date.now() - timestamp;
   const minutes = Math.floor(diff / 60_000);
   const hours = Math.floor(diff / 3_600_000);
   const days = Math.floor(diff / 86_400_000);
-
   if (minutes < 1) return 'Just now';
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
@@ -50,15 +49,20 @@ function timeAgo(timestamp: number): string {
 function verdictBadgeStyle(verdict: ClaudeDietResult['verdict']) {
   switch (verdict) {
     case 'SAFE':
-      return { bg: C.safeBg, text: C.safeText, label: 'SAFE' };
+      return { bg: C.safeBg, text: C.safeText, label: 'SAFE', icon: 'checkmark-circle' as const };
     case 'NOT_SAFE':
-      return { bg: C.redBg, text: C.red, label: 'NOT PERMITTED' };
+      return { bg: C.redBg, text: C.red, label: 'NOT PERMITTED', icon: 'close-circle' as const };
     case 'CAUTION':
-      return { bg: C.amberBg, text: C.amber, label: 'CAUTION' };
+      return { bg: C.amberBg, text: C.amber, label: 'CAUTION', icon: 'warning' as const };
   }
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function modeIcon(mode: string): keyof typeof Ionicons.glyphMap {
+  if (mode === 'photo') return 'camera-outline';
+  if (mode === 'barcode') return 'barcode-outline';
+  return 'create-outline';
+}
+
 export default function HistoryScreen() {
   const [items, setItems] = useState<ScanHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,9 +78,7 @@ export default function HistoryScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  useEffect(() => { void reload(); }, [reload]);
 
   const handleClearAll = useCallback(async () => {
     await clearHistory();
@@ -84,64 +86,80 @@ export default function HistoryScreen() {
     setExpanded(null);
   }, []);
 
-  // ── Render item ──────────────────────────────────────────────────────────
-  const renderItem = useCallback(
-    ({ item }: { item: ScanHistoryItem }) => {
-      const badge = verdictBadgeStyle(item.result.verdict);
-      const isExpanded = expanded === item.id;
+  const renderItem = useCallback(({ item }: { item: ScanHistoryItem }) => {
+    const badge = verdictBadgeStyle(item.result.verdict);
+    const isExpanded = expanded === item.id;
 
-      return (
-        <View style={styles.itemWrapper}>
-          <Pressable
-            style={styles.row}
-            onPress={() => setExpanded(isExpanded ? null : item.id)}>
-            {/* Verdict badge */}
+    return (
+      <View style={styles.itemWrapper}>
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
+          onPress={() => setExpanded(isExpanded ? null : item.id)}>
+
+          {/* Left: mode icon */}
+          <View style={styles.modeIcon}>
+            <Ionicons name={modeIcon(item.mode)} size={16} color={C.textMuted} />
+          </View>
+
+          {/* Center: name + time */}
+          <View style={styles.rowText}>
+            <Text style={styles.productName} numberOfLines={1}>
+              {item.result.productName || 'Unknown product'}
+            </Text>
+            <Text style={styles.meta}>{timeAgo(item.createdAt)}</Text>
+          </View>
+
+          {/* Right: verdict badge + chevron */}
+          <View style={styles.rowRight}>
             <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+              <Ionicons name={badge.icon} size={11} color={badge.text} />
               <Text style={[styles.badgeText, { color: badge.text }]}>{badge.label}</Text>
             </View>
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={C.textMuted}
+            />
+          </View>
+        </Pressable>
 
-            {/* Text */}
-            <View style={styles.rowText}>
-              <Text style={styles.productName} numberOfLines={1}>
-                {item.result.productName}
-              </Text>
-              <Text style={styles.meta}>{timeAgo(item.createdAt)}</Text>
-            </View>
+        {isExpanded && (
+          <View style={styles.expandedCard}>
+            <ResultCard result={item.result} />
+          </View>
+        )}
+      </View>
+    );
+  }, [expanded]);
 
-            {/* Chevron */}
-            <Text style={styles.chevron}>{isExpanded ? '▾' : '›'}</Text>
-          </Pressable>
-
-          {/* Expanded result card */}
-          {isExpanded && (
-            <View style={styles.expandedCard}>
-              <ResultCard result={item.result} />
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.title}>History</Text>
+          {items.length > 0 && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{items.length}</Text>
             </View>
           )}
         </View>
-      );
-    },
-    [expanded]
-  );
-
-  // ─── Render ──────────────────────────────────────────────────────────────
-  return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>History</Text>
         {items.length > 0 && (
-          <Pressable onPress={handleClearAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.clearBtn}>Clear all</Text>
+          <Pressable onPress={handleClearAll} style={styles.clearBtn} hitSlop={10}>
+            <Ionicons name="trash-outline" size={15} color={C.red} />
+            <Text style={styles.clearBtnText}>Clear</Text>
           </Pressable>
         )}
       </View>
 
       {loading ? null : items.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyEmoji}>🌿</Text>
+          <View style={styles.emptyIconWrap}>
+            <Ionicons name="leaf-outline" size={36} color={C.accentGreen} />
+          </View>
           <Text style={styles.emptyTitle}>No scans yet</Text>
           <Text style={styles.emptySubtitle}>
-            Scan a label, barcode, or enter ingredients manually to see results here.
+            Scan a label, barcode, or type ingredients to check compliance. Results will appear here.
           </Text>
         </View>
       ) : (
@@ -151,115 +169,115 @@ export default function HistoryScreen() {
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         />
       )}
     </SafeAreaView>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: C.bg,
-  },
+  safeArea: { flex: 1, backgroundColor: C.bg },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: C.textPrimary,
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  title: { fontSize: 28, fontWeight: '700', color: C.textPrimary },
+  countBadge: {
+    backgroundColor: C.surface,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: C.border,
   },
+  countText: { fontSize: 13, fontWeight: '600', color: C.textSecondary },
   clearBtn: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: C.red,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#FFF0F0',
+    borderWidth: 1,
+    borderColor: '#FFD0D0',
   },
-  listContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    gap: 10,
-  },
-  itemWrapper: {
-    gap: 0,
-  },
+  clearBtnText: { fontSize: 13, fontWeight: '500', color: C.red },
+
+  listContent: { paddingHorizontal: 24, paddingBottom: 48, paddingTop: 4 },
+
+  itemWrapper: { gap: 0 },
   row: {
     backgroundColor: C.surface,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: C.border,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
   },
+  modeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowText: { flex: 1, gap: 3 },
+  productName: { fontSize: 14, fontWeight: '600', color: C.textPrimary },
+  meta: { fontSize: 12, color: C.textMuted },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     borderRadius: 999,
-    flexShrink: 0,
   },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  rowText: {
-    flex: 1,
-    gap: 3,
-  },
-  productName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: C.textPrimary,
-  },
-  meta: {
-    fontSize: 12,
-    fontWeight: '400',
-    color: C.textMuted,
-  },
-  chevron: {
-    fontSize: 18,
-    color: C.textMuted,
-  },
-  expandedCard: {
-    marginTop: 8,
-    marginBottom: 4,
-  },
+  badgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
+
+  expandedCard: { marginTop: 8, marginBottom: 4 },
+
   // Empty state
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
-    gap: 12,
+    paddingHorizontal: 36,
+    gap: 14,
   },
-  emptyEmoji: {
-    fontSize: 48,
+  emptyIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: '#EAF4EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: C.textPrimary,
-    textAlign: 'center',
-  },
+  emptyTitle: { fontSize: 20, fontWeight: '700', color: C.textPrimary },
   emptySubtitle: {
     fontSize: 14,
-    fontWeight: '400',
     color: C.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
   },
 });

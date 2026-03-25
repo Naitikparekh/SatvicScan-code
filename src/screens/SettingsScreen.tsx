@@ -13,10 +13,10 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 import { getApiKey, saveApiKey, deleteApiKey } from '../services/storage';
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
 const C = {
   bg: '#FFFFFF',
   surface: '#F7F7F5',
@@ -25,28 +25,30 @@ const C = {
   textSecondary: '#6B6B6B',
   textMuted: '#ABABAB',
   accentGreen: '#2D6A4F',
+  accentGreenLight: '#EAF4EE',
   red: '#C1121F',
 } as const;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function maskApiKey(key: string): string {
   if (!key) return '';
   if (key.length <= 12) return '••••••••••••';
-  // Show "sk-ant-...xxxx" format
   const prefix = key.startsWith('sk-ant-') ? 'sk-ant-' : key.slice(0, 6);
   const suffix = key.slice(-4);
   return `${prefix}...${suffix}`;
 }
 
-// ─── ApiKey Bottom Sheet ──────────────────────────────────────────────────────
-interface ApiKeySheetProps {
+// ── API Key Sheet ────────────────────────────────────────────────────────────
+function ApiKeySheet({
+  visible,
+  currentKey,
+  onClose,
+  onSaved,
+}: {
   visible: boolean;
   currentKey: string | null;
   onClose: () => void;
   onSaved: (key: string) => void;
-}
-
-function ApiKeySheet({ visible, currentKey, onClose, onSaved }: ApiKeySheetProps) {
+}) {
   const insets = useSafeAreaInsets();
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -68,27 +70,25 @@ function ApiKeySheet({ visible, currentKey, onClose, onSaved }: ApiKeySheetProps
   }, [value, onSaved, onClose]);
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
-          style={[styles.sheetContainer, { backgroundColor: C.bg }]}
+          style={{ flex: 1, backgroundColor: C.bg }}
           contentContainerStyle={[styles.sheetContent, { paddingBottom: insets.bottom + 24 }]}
           keyboardShouldPersistTaps="handled">
 
-          {/* Sheet header */}
           <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>Claude API Key</Text>
-          <Text style={styles.sheetSubtitle}>
-            Your key is stored securely on this device and never leaves it.
-          </Text>
 
-          {/* Current key display */}
+          <View style={styles.sheetHeaderRow}>
+            <View style={styles.sheetIconWrap}>
+              <Ionicons name="key" size={20} color={C.accentGreen} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sheetTitle}>Claude API Key</Text>
+              <Text style={styles.sheetSubtitle}>Stored securely on this device only</Text>
+            </View>
+          </View>
+
           {currentKey ? (
             <View style={styles.currentKeyCard}>
               <Text style={styles.currentKeyLabel}>Current key</Text>
@@ -96,11 +96,8 @@ function ApiKeySheet({ visible, currentKey, onClose, onSaved }: ApiKeySheetProps
             </View>
           ) : null}
 
-          {/* Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>
-              {currentKey ? 'Replace with new key' : 'Enter your API key'}
-            </Text>
+            <Text style={styles.inputLabel}>{currentKey ? 'Replace with new key' : 'Enter your API key'}</Text>
             <TextInput
               style={styles.textInput}
               value={value}
@@ -114,24 +111,22 @@ function ApiKeySheet({ visible, currentKey, onClose, onSaved }: ApiKeySheetProps
             />
           </View>
 
-          {/* Link */}
           <Pressable
             onPress={() => Linking.openURL('https://console.anthropic.com')}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={styles.linkText}>
-              Get your API key at console.anthropic.com
-            </Text>
+            style={styles.linkRow}
+            hitSlop={10}>
+            <Ionicons name="open-outline" size={14} color={C.accentGreen} />
+            <Text style={styles.linkText}>Get your key at console.anthropic.com</Text>
           </Pressable>
 
-          {/* Save button */}
           <Pressable
-            style={[styles.btnPrimary, (!value.trim() || saving) && { opacity: 0.5 }]}
+            style={[styles.btnPrimary, (!value.trim() || saving) && { opacity: 0.45 }]}
             onPress={handleSave}
             disabled={!value.trim() || saving}>
-            <Text style={styles.btnPrimaryText}>{saving ? 'Saving…' : 'Save'}</Text>
+            <Ionicons name={saving ? 'hourglass-outline' : 'save-outline'} size={18} color="#fff" />
+            <Text style={styles.btnPrimaryText}>{saving ? 'Saving…' : 'Save Key'}</Text>
           </Pressable>
 
-          {/* Cancel */}
           <Pressable style={styles.btnSecondary} onPress={onClose}>
             <Text style={styles.btnSecondaryText}>Cancel</Text>
           </Pressable>
@@ -141,7 +136,7 @@ function ApiKeySheet({ visible, currentKey, onClose, onSaved }: ApiKeySheetProps
   );
 }
 
-// ─── Main Settings Screen ─────────────────────────────────────────────────────
+// ── Settings Screen ──────────────────────────────────────────────────────────
 export default function SettingsScreen() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
@@ -151,35 +146,26 @@ export default function SettingsScreen() {
     let mounted = true;
     (async () => {
       const key = await getApiKey();
-      if (mounted) {
-        setApiKey(key);
-        setLoading(false);
-      }
+      if (mounted) { setApiKey(key); setLoading(false); }
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   const handleRemoveKey = useCallback(() => {
     Alert.alert(
       'Remove API Key',
-      'This will remove the stored API key from this device. You will need to re-enter it to use SatvikScan.',
+      'This will remove the stored key from this device.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: async () => {
-            await deleteApiKey();
-            setApiKey(null);
-          },
+          onPress: async () => { await deleteApiKey(); setApiKey(null); },
         },
       ]
     );
   }, []);
 
-  // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <ScrollView
@@ -187,62 +173,105 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        <Text style={styles.title}>Settings</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Settings</Text>
+        </View>
 
-        {/* API Key row */}
+        {/* API key status banner */}
+        {!loading && (
+          <Pressable
+            style={[styles.apiBanner, apiKey ? styles.apiBannerSet : styles.apiBannerUnset]}
+            onPress={() => setSheetVisible(true)}>
+            <View style={[styles.apiBannerIcon, { backgroundColor: apiKey ? C.accentGreenLight : '#FFF4E0' }]}>
+              <Ionicons name="key-outline" size={20} color={apiKey ? C.accentGreen : '#E07A00'} />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.apiBannerTitle}>
+                {apiKey ? 'API Key configured' : 'API Key not set'}
+              </Text>
+              <Text style={styles.apiBannerValue}>
+                {apiKey ? maskApiKey(apiKey) : 'Tap to add your Claude API key'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
+          </Pressable>
+        )}
+
+        {/* API Configuration card */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>API Configuration</Text>
 
           <Pressable style={styles.settingRow} onPress={() => setSheetVisible(true)}>
+            <View style={styles.settingIconWrap}>
+              <Ionicons name="key-outline" size={18} color={C.accentGreen} />
+            </View>
             <View style={styles.settingInfo}>
               <Text style={styles.settingTitle}>API Key</Text>
               <Text style={styles.settingValue} numberOfLines={1}>
-                {loading
-                  ? 'Loading…'
-                  : apiKey
-                  ? maskApiKey(apiKey)
-                  : 'Not configured'}
+                {loading ? 'Loading…' : apiKey ? maskApiKey(apiKey) : 'Not configured'}
               </Text>
             </View>
-            <Text style={styles.settingChevron}>›</Text>
+            <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
           </Pressable>
 
           {apiKey && (
             <>
               <View style={styles.divider} />
               <Pressable style={styles.settingRow} onPress={handleRemoveKey}>
-                <Text style={styles.dangerText}>Remove API Key</Text>
+                <View style={[styles.settingIconWrap, { backgroundColor: '#FFF0F0' }]}>
+                  <Ionicons name="trash-outline" size={18} color={C.red} />
+                </View>
+                <Text style={[styles.settingTitle, { color: C.red }]}>Remove API Key</Text>
               </Pressable>
             </>
           )}
         </View>
 
-        {/* About */}
+        {/* About card */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>About</Text>
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>App</Text>
-            <Text style={styles.aboutValue}>SatvikScan</Text>
+
+          <View style={styles.settingRow}>
+            <View style={[styles.settingIconWrap, { backgroundColor: C.accentGreenLight }]}>
+              <Ionicons name="leaf-outline" size={18} color={C.accentGreen} />
+            </View>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingTitle}>SatvikScan</Text>
+              <Text style={styles.settingValue}>Swaminarayan diet compliance</Text>
+            </View>
           </View>
+
           <View style={styles.divider} />
-          <View style={styles.aboutRow}>
-            <Text style={styles.aboutLabel}>Model</Text>
-            <Text style={styles.aboutValue}>claude-haiku-4-5-20251001</Text>
+
+          <View style={styles.settingRow}>
+            <View style={[styles.settingIconWrap, { backgroundColor: '#F0F4FF' }]}>
+              <Ionicons name="cpu-outline" size={18} color="#4B6BFB" />
+            </View>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingTitle}>AI Model</Text>
+              <Text style={styles.settingValue}>claude-haiku-4-5</Text>
+            </View>
           </View>
+
           <View style={styles.divider} />
+
           <Pressable
-            style={styles.aboutRow}
+            style={styles.settingRow}
             onPress={() => Linking.openURL('https://console.anthropic.com')}>
-            <Text style={styles.aboutLabel}>Get API key</Text>
-            <Text style={[styles.aboutValue, { color: C.accentGreen }]}>
-              console.anthropic.com
-            </Text>
+            <View style={[styles.settingIconWrap, { backgroundColor: '#FFF4E0' }]}>
+              <Ionicons name="link-outline" size={18} color="#E07A00" />
+            </View>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingTitle}>Get API Key</Text>
+              <Text style={[styles.settingValue, { color: C.accentGreen }]}>console.anthropic.com</Text>
+            </View>
+            <Ionicons name="open-outline" size={16} color={C.textMuted} />
           </Pressable>
         </View>
 
         <Text style={styles.footerNote}>
-          Your API key is stored securely using iOS Keychain and never sent anywhere except the
-          official Anthropic API.
+          Your API key is stored in the iOS Keychain and never leaves this device.
         </Text>
       </ScrollView>
 
@@ -256,27 +285,43 @@ export default function SettingsScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: C.bg,
+  safeArea: { flex: 1, backgroundColor: C.bg },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 24, paddingBottom: 48 },
+
+  header: { paddingTop: 20, paddingBottom: 16 },
+  title: { fontSize: 28, fontWeight: '700', color: C.textPrimary },
+
+  // API status banner
+  apiBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
   },
-  scroll: {
-    flex: 1,
+  apiBannerSet: {
+    backgroundColor: '#F2FAF5',
+    borderColor: '#B7E4C7',
   },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-    gap: 16,
+  apiBannerUnset: {
+    backgroundColor: '#FFFBF0',
+    borderColor: '#FFE4A0',
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: C.textPrimary,
-    marginTop: 16,
-    marginBottom: 8,
+  apiBannerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  apiBannerTitle: { fontSize: 14, fontWeight: '600', color: C.textPrimary },
+  apiBannerValue: { fontSize: 13, color: C.textSecondary },
+
+  // Card
   card: {
     backgroundColor: C.surface,
     borderRadius: 16,
@@ -285,16 +330,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+    marginBottom: 16,
   },
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: '400',
+    fontSize: 11,
+    fontWeight: '600',
     color: C.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     paddingHorizontal: 16,
     paddingTop: 14,
     paddingBottom: 8,
@@ -303,91 +349,52 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     gap: 12,
   },
-  settingInfo: {
-    flex: 1,
-    gap: 3,
-  },
-  settingTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: C.textPrimary,
-  },
-  settingValue: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: C.textSecondary,
-  },
-  settingChevron: {
-    fontSize: 20,
-    color: C.textMuted,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: C.border,
-    marginHorizontal: 16,
-  },
-  dangerText: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: C.red,
-  },
-  aboutRow: {
-    flexDirection: 'row',
+  settingIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: C.surface,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    justifyContent: 'center',
   },
-  aboutLabel: {
-    fontSize: 15,
-    fontWeight: '400',
-    color: C.textPrimary,
-  },
-  aboutValue: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: C.textSecondary,
-  },
+  settingInfo: { flex: 1, gap: 2 },
+  settingTitle: { fontSize: 15, fontWeight: '600', color: C.textPrimary },
+  settingValue: { fontSize: 13, color: C.textSecondary },
+  divider: { height: 1, backgroundColor: C.border, marginHorizontal: 16 },
+
   footerNote: {
     fontSize: 12,
-    fontWeight: '400',
     color: C.textMuted,
     lineHeight: 18,
     textAlign: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
+    marginTop: 4,
   },
-  // Sheet styles
-  sheetContainer: {
-    flex: 1,
-  },
-  sheetContent: {
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    gap: 16,
-  },
+
+  // Sheet
+  sheetContent: { paddingHorizontal: 24, paddingTop: 12, gap: 18 },
   sheetHandle: {
     width: 36,
     height: 4,
     borderRadius: 2,
     backgroundColor: C.border,
     alignSelf: 'center',
-    marginBottom: 12,
+    marginBottom: 4,
   },
-  sheetTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: C.textPrimary,
+  sheetHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  sheetIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: C.accentGreenLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sheetSubtitle: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: C.textSecondary,
-    lineHeight: 20,
-    marginTop: -4,
-  },
+  sheetTitle: { fontSize: 20, fontWeight: '700', color: C.textPrimary },
+  sheetSubtitle: { fontSize: 13, color: C.textSecondary, marginTop: 2 },
   currentKeyCard: {
     backgroundColor: C.surface,
     borderRadius: 12,
@@ -397,8 +404,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   currentKeyLabel: {
-    fontSize: 12,
-    fontWeight: '400',
+    fontSize: 11,
+    fontWeight: '600',
     color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -409,12 +416,10 @@ const styles = StyleSheet.create({
     color: C.textPrimary,
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
-  inputGroup: {
-    gap: 8,
-  },
+  inputGroup: { gap: 8 },
   inputLabel: {
     fontSize: 12,
-    fontWeight: '400',
+    fontWeight: '600',
     color: C.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -426,29 +431,27 @@ const styles = StyleSheet.create({
     borderColor: C.border,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    fontSize: 16,
-    fontWeight: '400',
+    fontSize: 15,
     color: C.textPrimary,
   },
-  linkText: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: C.accentGreen,
-    textAlign: 'center',
-    textDecorationLine: 'underline',
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: -4,
   },
+  linkText: { fontSize: 14, color: C.accentGreen, textDecorationLine: 'underline' },
   btnPrimary: {
     backgroundColor: C.accentGreen,
     borderRadius: 12,
     paddingVertical: 15,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
-  btnPrimaryText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  btnPrimaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   btnSecondary: {
     backgroundColor: C.surface,
     borderRadius: 12,
@@ -458,9 +461,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: -4,
   },
-  btnSecondaryText: {
-    color: C.textSecondary,
-    fontSize: 16,
-    fontWeight: '400',
-  },
+  btnSecondaryText: { color: C.textSecondary, fontSize: 15, fontWeight: '500' },
 });

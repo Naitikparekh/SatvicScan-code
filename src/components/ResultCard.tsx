@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { ClaudeDietResult } from '../types';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -23,21 +24,21 @@ function verdictConfig(verdict: ClaudeDietResult['verdict']) {
   switch (verdict) {
     case 'SAFE':
       return {
-        emoji: '✅',
+        icon: 'checkmark-circle' as const,
         label: 'SAFE',
         color: COLORS.accentGreen,
         bgColor: COLORS.safeBg,
       };
     case 'NOT_SAFE':
       return {
-        emoji: '❌',
+        icon: 'close-circle' as const,
         label: 'NOT PERMITTED',
         color: COLORS.red,
         bgColor: COLORS.redBg,
       };
     case 'CAUTION':
       return {
-        emoji: '⚠️',
+        icon: 'warning' as const,
         label: 'CAUTION',
         color: COLORS.amber,
         bgColor: COLORS.amberBg,
@@ -67,9 +68,10 @@ export function ResultCard({ result }: ResultCardProps) {
     <View style={styles.card}>
       {/* Verdict header */}
       <View style={[styles.verdictHeader, { backgroundColor: config.bgColor }]}>
-        <Text style={[styles.verdictText, { color: config.color }]}>
-          {config.emoji} {config.label}
-        </Text>
+        <View style={styles.verdictRow}>
+          <Ionicons name={config.icon} size={36} color={config.color} />
+          <Text style={[styles.verdictText, { color: config.color }]}>{config.label}</Text>
+        </View>
         {result.productName ? (
           <Text style={styles.productName} numberOfLines={2}>
             {result.productName}
@@ -157,12 +159,17 @@ const styles = StyleSheet.create({
   },
   verdictHeader: {
     paddingHorizontal: 20,
-    paddingVertical: 20,
-    gap: 6,
+    paddingVertical: 22,
+    gap: 8,
+  },
+  verdictRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   verdictText: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     letterSpacing: 0.5,
   },
   productName: {
